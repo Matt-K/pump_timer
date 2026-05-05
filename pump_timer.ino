@@ -31,7 +31,7 @@ const int BATTERY_PIN = A0;
 const float R1 = 220000.0;  // resistor from battery + to A0
 const float R2 = 22000.0;   // resistor from A0 to GND
 
-const float LOW_BATTERY_CUTOFF = 10.0;
+const float LOW_BATTERY_CUTOFF = 10.5;
 
 bool lowBatteryLockout = false;
 
@@ -46,6 +46,26 @@ float readBatteryVoltage() {
   float batteryVoltage = adcVoltage * ((R1 + R2) / R2);
 
   return batteryVoltage;
+}
+
+void enterLowBatterySleep() {
+  timerRunning = false;
+  lowBatteryLockout = true;
+  setRelays(false);
+
+  delay(250);
+
+  server.stop();
+  WiFi.softAPdisconnect(true);
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  WiFi.forceSleepBegin();
+
+  delay(1);
+
+  // Sleep indefinitely.
+  // Requires GPIO16 / D0 connected to RST if you want timed wake-up later.
+  ESP.deepSleep(0);
 }
 
 // ---------- Relay control ----------
@@ -173,11 +193,9 @@ void handleStart() {
   float batteryVoltage = readBatteryVoltage();
 
 if (batteryVoltage < LOW_BATTERY_CUTOFF) {
-  timerRunning = false;
-  setRelays(false);
-  lowBatteryLockout = true;
-  server.send(403, "text/plain", "Battery too low. Pump disabled.");
-  return;
+  server.send(403, "text/plain", "Battery too low. Going to sleep.");
+  delay(500);
+  enterLowBatterySleep();
 }
 
 lowBatteryLockout = false;
@@ -259,12 +277,9 @@ void loop() {
 
   float batteryVoltage = readBatteryVoltage();
 
-  if (batteryVoltage < LOW_BATTERY_CUTOFF) {
-    timerRunning = false;
-    lowBatteryLockout = true;
-    setRelays(false);
-    return;
-  }
+if (batteryVoltage < LOW_BATTERY_CUTOFF) {
+  enterLowBatterySleep();
+}
 
   if (!timerRunning) {
     return;
