@@ -144,12 +144,15 @@ function updateStatus() {
     .then(response => response.json())
     .then(data => {
       document.getElementById("status").innerHTML =
-      "Timer running: " + data.running + "<br>" +
-      "Pump: " + data.pump + "<br>" +
-      "Current phase: " + data.phase + "<br>" +
-      "Seconds remaining: " + data.remaining + "<br>" +
-      "Battery voltage: " + data.battery + " V<br>" +
-      "Low battery cutoff: " + data.lowBattery;
+        "Timer running: " + data.running + "<br>" +
+        "Pump: " + data.pump + "<br>" +
+        "Current phase: " + data.phase + "<br>" +
+        "Seconds remaining: " + data.remaining + "<br>" +
+        "Battery voltage: " + data.battery + " V<br>" +
+        "Low battery cutoff: " + data.lowBattery;
+
+      document.getElementById("onTime").value = data.onTime;
+      document.getElementById("offTime").value = data.offTime;
     });
 }
 
@@ -223,6 +226,8 @@ json += "\"running\":\"" + String(timerRunning ? "YES" : "NO") + "\",";
 json += "\"pump\":\"" + String(pumpOn ? "ON" : "OFF") + "\",";
 json += "\"phase\":\"" + String(pumpOn ? "ON time" : "OFF time") + "\",";
 json += "\"remaining\":" + String(remaining) + ",";
+json += "\"onTime\":" + String(onTimeMs / 1000UL) + ",";
+json += "\"offTime\":" + String(offTimeMs / 1000UL) + ",";
 json += "\"battery\":" + String(batteryVoltage, 2) + ",";
 json += "\"lowBattery\":\"" + String(lowBatteryLockout ? "YES" : "NO") + "\"";
 json += "}";
