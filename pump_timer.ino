@@ -25,6 +25,29 @@ bool pumpOn = false;
 
 unsigned long phaseStartTime = 0;
 
+//low battery cutoff
+const int BATTERY_PIN = A0;
+
+const float R1 = 220000.0;  // resistor from battery + to A0
+const float R2 = 22000.0;   // resistor from A0 to GND
+
+const float LOW_BATTERY_CUTOFF = 10.0;
+
+bool lowBatteryLockout = false;
+
+float readBatteryVoltage() {
+  int raw = analogRead(BATTERY_PIN);
+
+  // ESP8266 bare chip A0 range is 0–1.0V.
+  // Some NodeMCU boards scale A0 to 3.3V.
+  // Use 1.0 first. If readings are wrong, try 3.3.
+  float adcVoltage = raw * (1.0 / 1023.0);
+
+  float batteryVoltage = adcVoltage * ((R1 + R2) / R2);
+
+  return batteryVoltage;
+}
+
 // ---------- Relay control ----------
 void setRelays(bool on) {
   pumpOn = on;
@@ -121,10 +144,12 @@ function updateStatus() {
     .then(response => response.json())
     .then(data => {
       document.getElementById("status").innerHTML =
-        "Timer running: " + data.running + "<br>" +
-        "Pump: " + data.pump + "<br>" +
-        "Current phase: " + data.phase + "<br>" +
-        "Seconds remaining: " + data.remaining;
+      "Timer running: " + data.running + "<br>" +
+      "Pump: " + data.pump + "<br>" +
+      "Current phase: " + data.phase + "<br>" +
+      "Seconds remaining: " + data.remaining + "<br>" +
+      "Battery voltage: " + data.battery + " V<br>" +
+      "Low battery cutoff: " + data.lowBattery;
     });
 }
 
@@ -142,6 +167,17 @@ void handleRoot() {
 }
 
 void handleStart() {
+  float batteryVoltage = readBatteryVoltage();
+
+if (batteryVoltage < LOW_BATTERY_CUTOFF) {
+  timerRunning = false;
+  setRelays(false);
+  lowBatteryLockout = true;
+  server.send(403, "text/plain", "Battery too low. Pump disabled.");
+  return;
+}
+
+lowBatteryLockout = false;
   if (server.hasArg("on") && server.hasArg("off")) {
     int onSeconds = server.arg("on").toInt();
     int offSeconds = server.arg("off").toInt();
@@ -151,6 +187,8 @@ void handleStart() {
 
     onTimeMs = (unsigned long)onSeconds * 1000UL;
     offTimeMs = (unsigned long)offSeconds * 1000UL;
+
+    
 
     timerRunning = true;
     phaseStartTime = millis();
@@ -178,12 +216,16 @@ void handleStatus() {
     remaining = (phaseLength - elapsed) / 1000UL;
   }
 
-  String json = "{";
-  json += "\"running\":\"" + String(timerRunning ? "YES" : "NO") + "\",";
-  json += "\"pump\":\"" + String(pumpOn ? "ON" : "OFF") + "\",";
-  json += "\"phase\":\"" + String(pumpOn ? "ON time" : "OFF time") + "\",";
-  json += "\"remaining\":" + String(remaining);
-  json += "}";
+  float batteryVoltage = readBatteryVoltage();
+
+String json = "{";
+json += "\"running\":\"" + String(timerRunning ? "YES" : "NO") + "\",";
+json += "\"pump\":\"" + String(pumpOn ? "ON" : "OFF") + "\",";
+json += "\"phase\":\"" + String(pumpOn ? "ON time" : "OFF time") + "\",";
+json += "\"remaining\":" + String(remaining) + ",";
+json += "\"battery\":" + String(batteryVoltage, 2) + ",";
+json += "\"lowBattery\":\"" + String(lowBatteryLockout ? "YES" : "NO") + "\"";
+json += "}";
 
   server.send(200, "application/json", json);
 }
@@ -210,6 +252,15 @@ void setup() {
 void loop() {
   server.handleClient();
 
+  float batteryVoltage = readBatteryVoltage();
+
+  if (batteryVoltage < LOW_BATTERY_CUTOFF) {
+    timerRunning = false;
+    lowBatteryLockout = true;
+    setRelays(false);
+    return;
+  }
+
   if (!timerRunning) {
     return;
   }
@@ -219,13 +270,13 @@ void loop() {
 
   if (pumpOn) {
     if (elapsed >= onTimeMs) {
-      setRelays(false);       // turn pump OFF
-      phaseStartTime = now;   // restart timer for OFF phase
+      setRelays(false);
+      phaseStartTime = now;
     }
   } else {
     if (elapsed >= offTimeMs) {
-      setRelays(true);        // turn pump ON
-      phaseStartTime = now;   // restart timer for ON phase
+      setRelays(true);
+      phaseStartTime = now;
     }
   }
 }
